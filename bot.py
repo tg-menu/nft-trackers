@@ -1,4 +1,4 @@
-import asyncio
+ import asyncio
 import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
@@ -10,14 +10,14 @@ BOT_TOKEN = "8789847797:AAGmwEa5om3cO4AA1CBraAfCMQl2KyDXqCs"
 CHAT_ID = -1004415141036
 THREAD_ID = 2
 
-# Данные для UserBot (нужно взять на https://my.telegram.org)
-API_ID = 1234567          # Замени на свой api_id (цифры)
-API_HASH = "your_api_hash"  # Замени на свой api_hash (строка)
+# Твои реальные данные API
+API_ID = 32664392
+API_HASH = "ebdb1e9063562eb00e75ef20336869e6"
 
 bot = Bot(token=BOT_TOKEN)
 seen_gifts = set()
 
-# Простой веб-сервер для Render
+# Веб-сервер для Render (чтобы бот не засыпал)
 class SimpleHandler(BaseHTTPRequestHandler):
     do_GET = lambda self: (self.send_response(200), self.end_headers(), self.wfile.write(b"NFT Tracker is active!"))
 
@@ -55,15 +55,18 @@ async def send_gift_alert(gift_id, username, has_premium, price, photo_url):
 
 # Функция мониторинга маркетплейса через UserBot
 async def monitor_marketplace():
-    # Инициализируем юзербота (для работы от твоего аккаунта)
     client = TelegramClient('session_name', API_ID, API_HASH)
-    await client.start()
-    print("UserBot успешно авторизован и мониторит рынок!")
+    
+    try:
+        await client.start()
+        print("UserBot успешно авторизован!")
+    except Exception as e:
+        print(f"Ошибка авторизации UserBot: {e}")
+        return
 
     while True:
         try:
-            # Сюда добавим логику запроса к каталогу подарков через Telethon
-            # (например, вызов методов получения реселл-подарков)
+            # Логика получения данных с маркетплейса
             pass
         except Exception as e:
             print(f"Ошибка в мониторинге: {e}")
@@ -73,8 +76,19 @@ async def monitor_marketplace():
 async def main():
     print("Fast NFT Tracker запускается...")
     
+    # Отправляем стартовое сообщение в топик для проверки
+    try:
+        await bot.send_message(
+            chat_id=CHAT_ID,
+            message_thread_id=THREAD_ID,
+            text="🚀 **Бот и UserBot успешно запущены на сервере!**",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Ошибка отправки старта: {e}")
+
     # Запуск фонового мониторинга
-    # asyncio.create_task(monitor_marketplace())
+    asyncio.create_task(monitor_marketplace())
 
     while True:
         await asyncio.sleep(3600)
