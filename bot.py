@@ -21,7 +21,12 @@ bot = Bot(token=BOT_TOKEN)
 seen_gifts = set()
 
 class SimpleHandler(BaseHTTPRequestHandler):
-    do_GET = lambda self: (self.send_response(200), self.end_headers(), self.wfile.write(b"Real Gift Marketplace Monitor is active!"))
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Real Gift Marketplace Monitor is active!")
+    def log_message(self, format, *args):
+        pass  # Отключаем лишний мусор в логах сервера
 
 def run_server():
     port = int(os.environ.get("PORT", 10000))
@@ -33,11 +38,10 @@ async def send_gift_alert(gift_slug, gift_name, username, owner_name, price):
         return
     seen_gifts.add(gift_slug)
     
-    # Ограничение памяти для кэша виденных подарков (чтобы не раздувать ОЗУ)
     if len(seen_gifts) > 5000:
         seen_gifts.clear()
         
-    user_link = f"@{username}" if username else f"[Пользователь (ID)](https://t.me/{username})" if username else "Скрыт"
+    user_link = f"@{username}" if username else f"ID: {owner_name}"
     
     caption = (
         f"🚨 **Новый лот подарка на маркете!**\n\n"
@@ -55,32 +59,16 @@ async def send_gift_alert(gift_slug, gift_name, username, owner_name, price):
             parse_mode="Markdown",
             disable_web_page_preview=True
         )
-        print(f"Отправлен реальный лот '{gift_name}' от @{username} за {price} звезд")
+        print(f"Отправлен лот '{gift_name}' от @{username} за {price} звезд")
     except Exception as e:
         print(f"Ошибка отправки в чат: {e}")
 
 async def monitor_marketplace():
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     
-    try:
-        await client.start()
-        print("UserBot успешно подключен через MTProto API к рынку подарков!")
-    except Exception as e:
-        print(f"Ошибка подключения UserBot: {e}")
-        return
+    await client.start()
+    print("UserBot успешно подключен через MTProto API к рынку подарков!")
 
-    try:
-        await bot.send_message(
-            chat_id=CHAT_ID,
-            message_thread_id=THREAD_ID,
-            text="🚀 **Мониторинг реального рынка подарков запущен!**",
-            parse_mode="Markdown"
-        )
-    except:
-        pass
-
-    # Базовые ID подарков для сканирования рынка перепродажи
-    # (Telegram группирует коллекционные подарки по базовым ID исходных гифтов)
     base_gift_ids = list(range(1, 100))
 
     while True:
@@ -95,7 +83,6 @@ async def monitor_marketplace():
                     ))
                     
                     if hasattr(result, 'gifts') and result.gifts:
-                        # Собираем словарь пользователей для быстрого сопоставления ID владельца с юзернеймом
                         users_dict = {u.id: u for u in getattr(result, 'users', [])}
                         
                         for gift in result.gifts:
@@ -103,13 +90,11 @@ async def monitor_marketplace():
                             if not gift_slug or gift_slug in seen_gifts:
                                 continue
                             
-                            gift_name = f"Collectible Gift #{base_id}"
+                            gift_name = f"Gift #{base_id}"
                             if hasattr(gift, 'num') and gift.num:
                                 gift_name = f"Gift #{base_id} (№{gift.num})"
                             
-                            # Цена в звездах
                             price = getattr(gift, 'resell_stars', getattr(gift, 'price', 0))
-                            
                             owner_id = getattr(gift, 'owner_id', None)
                             username = None
                             owner_name = "Владелец"
@@ -129,23 +114,38 @@ async def monitor_marketplace():
                                 price=price
                             )
                 except Exception:
-                    # Если по данному ID нет активных торгов или метод временно недоступен — идем дальше
                     pass
                 
                 await asyncio.sleep(0.3)
         except Exception as e:
             print(f"Ошибка в цикле сканирования маркета: {e}")
+            await asyncio.sleep(5)
             
-        # Пауза перед следующим полным циклом мониторинга рынка
         await asyncio.sleep(10)
 
 async def main():
-    asyncio.create_task(monitor_marketplace())
-    while True:
-        await asyncio.sleep(3600)
-
-if __name__ == "__main__":
+    # Запускаем веб-сервер для Render в отдельном потоке
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
-    
+
+    # Отправляем уведомление о запуске РОВНО ОДИН РАЗ
+    try:
+        await bot.send_message(
+            chat_id=CHAT_ID,
+            message_thread_id=THREAD_ID,
+            text="🚀 **Мониторинг рынка подарков запущен и работает стабильно!**",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Не удалось отправить стартовое сообщение: {e}")
+
+    # Запускаем мониторинг с защитой от падений
+    while True:
+        try:
+            await monitor_marketplace()
+        except Exception as e:
+            print(f"Сбой клиента, переподключение через 10 секунд: {e}")
+            await asyncio.sleep(10)
+
+if __name__ == "__main__":
     asyncio.run(main())
