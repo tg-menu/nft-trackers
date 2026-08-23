@@ -5,7 +5,6 @@ import threading
 from aiogram import Bot
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-import aiohttp
 
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = "8789847797:AAGmwEa5om3cO4AA1CBraAfCMQl2KyDXqCs"
@@ -57,32 +56,35 @@ async def send_gift_alert(gift_id, username, has_premium, price, photo_url):
     except Exception as e:
         print(f"Ошибка отправки сообщения: {e}")
 
-# Функция мониторинга маркетплейса подарков
+# Функция мониторинга маркетплейса
 async def monitor_marketplace():
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     
     try:
         await client.start()
-        print("UserBot успешно подключен к аккаунту и запущен на сервере!")
+        print("UserBot успешно подключен к аккаунту!")
     except Exception as e:
         print(f"Ошибка подключения UserBot: {e}")
         return
 
+    # Отправляем тестовый образец карточки для проверки интерфейса
+    await send_gift_alert(
+        gift_id="test_gift_example_1",
+        username="durov",
+        has_premium=True,
+        price="500",
+        photo_url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500"
+    )
+
     while True:
         try:
-            # Здесь бот опрашивает источник / маркетплейс подарков.
-            # Как только появляется новый выставленный лог/подарок, 
-            # скрипт считывает параметры (gift_id, username, has_premium, price, photo_url)
-            # и передает их в функцию отправки:
-            # 
-            # Пример вызова:
-            # await send_gift_alert("gift_12345", "durov", True, "500", "https://example.com/gift.png")
-            
+            # Здесь бот будет в цикле принимать новые выставленные подарки
+            # и вызывать функцию send_gift_alert(gift_id, username, has_premium, price, photo_url)
             pass
         except Exception as e:
             print(f"Ошибка в цикле мониторинга: {e}")
             
-        await asyncio.sleep(15)
+        await asyncio.sleep(20)
 
 async def main():
     print("Fast NFT Tracker запущен...")
@@ -91,7 +93,7 @@ async def main():
         await bot.send_message(
             chat_id=CHAT_ID,
             message_thread_id=THREAD_ID,
-            text="🚀 **Трекер подарков успешно запущен и работает!**",
+            text="🚀 **Трекер подарков успешно запущен и начал работу!**",
             parse_mode="Markdown"
         )
     except Exception as e:
