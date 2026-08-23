@@ -5,7 +5,7 @@ import threading
 from aiogram import Bot
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.functions.payments import GetResaleStarGiftsRequest
+from telethon.tl.functions.payments import GetStarGiftsRequest, GetResaleStarGiftsRequest
 
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = "8789847797:AAGmwEa5om3cO4AA1CBraAfCMQl2KyDXqCs"
@@ -24,9 +24,9 @@ class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Real Gift Marketplace Monitor is active!")
+        self.wfile.write(b"Native Gift Market Monitor is active!")
     def log_message(self, format, *args):
-        pass  # Отключаем лишний мусор в логах сервера
+        pass
 
 def run_server():
     port = int(os.environ.get("PORT", 10000))
@@ -44,8 +44,8 @@ async def send_gift_alert(gift_slug, gift_name, username, owner_name, price):
     user_link = f"@{username}" if username else f"ID: {owner_name}"
     
     caption = (
-        f"🚨 **Новый лот подарка на маркете!**\n\n"
-        f"🏷 **Подарок:** {gift_name}\n"
+        f"🚨 **Новый лот в официальном маркете!**\n\n"
+        f"🎁 **Подарок:** {gift_name}\n"
         f"👤 **Продавец:** {user_link} ({owner_name})\n"
         f"💰 **Цена:** `{price}` Stars\n"
         f"🔗 **Slug / Ссылка:** `{gift_slug}`"
@@ -59,7 +59,7 @@ async def send_gift_alert(gift_slug, gift_name, username, owner_name, price):
             parse_mode="Markdown",
             disable_web_page_preview=True
         )
-        print(f"Отправлен лот '{gift_name}' от @{username} за {price} звезд")
+        print(f"Отправлен лот '{gift_name}' за {price} звезд")
     except Exception as e:
         print(f"Ошибка отправки в чат: {e}")
 
@@ -67,17 +67,20 @@ async def monitor_marketplace():
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     
     await client.start()
-    print("UserBot успешно подключен через MTProto API к рынку подарков!")
-
-    base_gift_ids = list(range(1, 100))
+    print("UserBot подключен к официальному API подарков Telegram!")
 
     while True:
         try:
-            for base_id in base_gift_ids:
+            # 1. Получаем актуальный список всех базовых подарков из маркета
+            catalog = await client(GetStarGiftsRequest(hash=0))
+            gift_ids = [g.id for g in catalog.gifts if hasattr(g, 'id')]
+            
+            # 2. Проходим по каждому реальному ID коллекции
+            for gift_id in gift_ids:
                 try:
                     result = await client(GetResaleStarGiftsRequest(
-                        gift_id=base_id,
-                        limit=20,
+                        gift_id=gift_id,
+                        limit=10,
                         offset="",
                         stars_only=True
                     ))
@@ -90,9 +93,15 @@ async def monitor_marketplace():
                             if not gift_slug or gift_slug in seen_gifts:
                                 continue
                             
-                            gift_name = f"Gift #{base_id}"
+                            # Название подарка (если есть в каталоге)
+                            gift_name = f"Подарок ID {gift_id}"
+                            for g_obj in catalog.gifts:
+                                if g_obj.id == gift_id and hasattr(g_obj, 'title'):
+                                    gift_name = g_obj.title
+                                    break
+                                    
                             if hasattr(gift, 'num') and gift.num:
-                                gift_name = f"Gift #{base_id} (№{gift.num})"
+                                gift_name += f" (№{gift.num})"
                             
                             price = getattr(gift, 'resell_stars', getattr(gift, 'price', 0))
                             owner_id = getattr(gift, 'owner_id', None)
@@ -116,30 +125,27 @@ async def monitor_marketplace():
                 except Exception:
                     pass
                 
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.5)
         except Exception as e:
-            print(f"Ошибка в цикле сканирования маркета: {e}")
-            await asyncio.sleep(5)
+            print(f"Ошибка получения каталога подарков: {e}")
+            await asyncio.sleep(10)
             
-        await asyncio.sleep(10)
+        await asyncio.sleep(15)
 
 async def main():
-    # Запускаем веб-сервер для Render в отдельном потоке
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
 
-    # Отправляем уведомление о запуске РОВНО ОДИН РАЗ
     try:
         await bot.send_message(
             chat_id=CHAT_ID,
             message_thread_id=THREAD_ID,
-            text="🚀 **Мониторинг рынка подарков запущен и работает стабильно!**",
+            text="🚀 **Монитор официального маркета подарков запущен!**",
             parse_mode="Markdown"
         )
     except Exception as e:
         print(f"Не удалось отправить стартовое сообщение: {e}")
 
-    # Запускаем мониторинг с защитой от падений
     while True:
         try:
             await monitor_marketplace()
